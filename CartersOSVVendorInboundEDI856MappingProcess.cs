@@ -1,4 +1,4 @@
-﻿using DataSolutions.ApplicationFramework;
+using DataSolutions.ApplicationFramework;
 using DataSolutions.Commons.EDI.EdiTools;
 using DataSolutions.Commons.Extensions;
 using DataSolutions.Commons.FileMovementRetry;
@@ -870,7 +870,7 @@ namespace CartersOSVVendorInboundEDI856MappingProcess
                             try { shipLevel.PACKTYPE = ediDocument.Segments[i + 1].Values[1]; } catch (Exception) { shipLevel.PACKTYPE = ""; }
                             try { shipLevel.QUANTITY = ediDocument.Segments[i + 1].Values[2]; } catch (Exception) { shipLevel.QUANTITY = ""; }
 
-                            DataSolutions.DataModels.Xml.ShipNotice.EXTRA EXTRA_999DOCNAT = new DataSolutions.DataModels.Xml.ShipNotice.EXTRA { PARENT = "DOC856", CODE = "999DOCNAT", LABEL = "Document Nature", CONTENT = "ISHFRBUY" };
+                            DataSolutions.DataModels.Xml.ShipNotice.EXTRA EXTRA_999DOCNAT = new DataSolutions.DataModels.Xml.ShipNotice.EXTRA { PARENT = "DETAIL", CODE = "999DOCNAT", LABEL = "Document Nature", CONTENT = "ISHFRBUY" };
                             //NetWeightUOM vs GrossWeightUOM
                             if (ediDocument.Segments[i + 1].Values[6] == "G")
                             {
@@ -916,51 +916,101 @@ namespace CartersOSVVendorInboundEDI856MappingProcess
                             try { CONTENT_SHIPREFNUM_IA = ediDocument.Segments[i + 7].Values[2]; } catch (Exception) { CONTENT_SHIPREFNUM_IA = ""; }
                             SHIPREFNUM SHIPREFNUM_IA = new SHIPREFNUM { NUMTYPE = "IA", REFNUM = CONTENT_SHIPREFNUM_IA };
 
+                            //IK REFNUM
+                            #region REF*IK
+                            string ref_ik_value = null; // Initialize the variable to null
+
+                            bool startProcessing = false; // Flag to start processing when HL*1**S~ is encountered
+
+                            for (int u = 0; u < ediDocument.Segments.Count; u++)
+                            {
+                                if (ediDocument.Segments[u].Name == "HL")
+                                {
+                                    // Check for HL segment with specific values (HL*1**S~ or HL*2*1*O~)
+                                    if (ediDocument.Segments[u].Values.Count >= 3)
+                                    {
+                                        if (ediDocument.Segments[u].Values[3] == "S")
+                                        {
+                                            startProcessing = true; // Start processing when HL*1**S~ is encountered
+                                        }
+                                        else if (ediDocument.Segments[u].Values[3] == "O")
+                                        {
+                                            break; // Exit the loop when HL*2*1*O~ is encountered
+                                        }
+                                    }
+                                }
+
+                                // Check if we should process the segment
+                                if (startProcessing)
+                                {
+                                    // Check if the current segment matches the desired pattern
+                                    if (ediDocument.Segments[u].Name == "REF" &&
+                                        ediDocument.Segments[u].Values.Count >= 2 &&
+                                        ediDocument.Segments[u].Values[1] == "IK"
+                                        )
+                                    {
+                                        ref_ik_value = ediDocument.Segments[u].Values[2];
+                                        break; // Exit the loop once a matching segment is found
+                                    }
+                                }
+                            }
+
+                            string CONTENT_SHIPREFNUM_IK = ref_ik_value;
+                            SHIPREFNUM SHIPREFNUM_IK = new SHIPREFNUM { NUMTYPE = "IK", REFNUM = CONTENT_SHIPREFNUM_IK };
+                            #endregion
+
                             //Add to Shiplevel SHIPREFNUM
-                            shipLevel.SHIPREFNUM = new List<SHIPREFNUM> { SHIPREFNUM_BM, SHIPREFNUM_2L, SHIPREFNUM_IA }.ToArray();
+                            shipLevel.SHIPREFNUM = new List<SHIPREFNUM> { SHIPREFNUM_BM, SHIPREFNUM_2L, SHIPREFNUM_IA, SHIPREFNUM_IK }.ToArray();
 
 
-                            //Date Infos for Shiplevel:
-                            string CONTENT_dateInfo_067 = "";
-                            try
+
+
+                            #region DTM 067 AND 068
+                            string dtm_068_value = null;
+                            string dtm_067_value = null;
+
+                            bool startProcessing_DTM = false; // Flag to start processing when HL*1**S~ is encountered
+
+                            for (int l = 0; l < ediDocument.Segments.Count; l++)
                             {
-                                CONTENT_dateInfo_067 = ediDocument.Segments[i + 8].Values[2];
-                                if (CONTENT_dateInfo_067.Length > 8)
+                                if (ediDocument.Segments[l].Name == "HL")
                                 {
-                                    CONTENT_dateInfo_067 = ediDocument.Segments[i + 8].Values[2].Substring(0, 8);
+                                    // Check for HL segment with specific values (HL*1**S~ or HL*2*1*O~)
+                                    if (ediDocument.Segments[l].Values.Count >= 3)
+                                    {
+                                        if (ediDocument.Segments[l].Values[3] == "S")
+                                        {
+                                            startProcessing_DTM = true;
+                                            if (startProcessing_DTM)
+                                            {
+                                                for (int u = 0; u < ediDocument.Segments.Count; u++)
+                                                {
+                                                    if(ediDocument.Segments[u].Name == "DTM")
+                                                    {
+                                                        if (ediDocument.Segments[u].Values[1] == "068")
+                                                        {
+                                                            dtm_068_value = ediDocument.Segments[u].Values[2];
+                                                        }
+                                                        else if (ediDocument.Segments[u].Values[1] == "067")
+                                                        {
+                                                            dtm_067_value = ediDocument.Segments[u].Values[2];
+                                                        }
+                                                    }
+                                                }
+                                            }// Start processing when HL*1**S~ is encountered
+                                        }
+                                        else if (ediDocument.Segments[l].Values[3] == "O")
+                                        {
+                                            break; // Exit the loop when HL*2*1*O~ is encountered
+                                        }
+                                    }
                                 }
                             }
-                            catch (Exception)
-                            {
-                                CONTENT_dateInfo_067 = "";
-                            }
-                            DataSolutions.DataModels.Xml.ShipNotice.DATEINFO dateInfo_067 = new DataSolutions.DataModels.Xml.ShipNotice.DATEINFO { DATETYPE = "017", DATE = CONTENT_dateInfo_067 };
 
-                            string CONTENT_dateInfo_068 = "";
-                            for (int dateDTM068_iter = i + 9; dateDTM068_iter < 16; dateDTM068_iter++)
-                            {
-                                if (ediDocument.Segments[dateDTM068_iter].Name == "DTM" && ediDocument.Segments[dateDTM068_iter].Values[1] == "068")
-                                {
-                                    try
-                                    {
-                                        CONTENT_dateInfo_068 = ediDocument.Segments[dateDTM068_iter].Values[2];
-                                    }
-                                    catch (Exception)
-                                    {
-                                        CONTENT_dateInfo_068 = "";
-                                    }
-                                }
-                            }
-
-                            if (ediDocument.Segments[12].Values.Count > 3)
-                            {
-                                CONTENT_dateInfo_068 = ediDocument.Segments[12].Values[4].Substring(0, 8);
-                            }
-
-                            DataSolutions.DataModels.Xml.ShipNotice.DATEINFO dateInfo_068 = new DataSolutions.DataModels.Xml.ShipNotice.DATEINFO { DATETYPE = "002", DATE = CONTENT_dateInfo_068 };
-
+                            DataSolutions.DataModels.Xml.ShipNotice.DATEINFO dateInfo_067 = new DataSolutions.DataModels.Xml.ShipNotice.DATEINFO { DATETYPE = "017", DATE = dtm_067_value };
+                            DataSolutions.DataModels.Xml.ShipNotice.DATEINFO dateInfo_068 = new DataSolutions.DataModels.Xml.ShipNotice.DATEINFO { DATETYPE = "002", DATE = dtm_068_value };
                             //Add to Shiplevel Dateinfos
-                            if (CONTENT_dateInfo_068 == "")
+                            if (dtm_068_value == "")
                             {
                                 shipLevel.DATEINFO = new List<DataSolutions.DataModels.Xml.ShipNotice.DATEINFO> { dateInfo_067 }.ToArray();
                             }
@@ -968,38 +1018,124 @@ namespace CartersOSVVendorInboundEDI856MappingProcess
                             {
                                 shipLevel.DATEINFO = new List<DataSolutions.DataModels.Xml.ShipNotice.DATEINFO> { dateInfo_067, dateInfo_068 }.ToArray();
                             }
+                            #endregion
+
+                            #region handling ST loctype
+                            string N101 = "";
+                            string N102 = "";
+                            string N103 = "";
+                            string N104 = "";
+                            string N301 = "";
+                            string N302 = "";
+                            string N401 = "";
+                            string N402 = "";
+                            string N403 = "";
+                            string N404 = "";
 
 
-                            var AbbreviateEDIDocument = ediDocument2;
-                            int elementsToDelete = ediDocument2.Segments.Count - 16;
-                            AbbreviateEDIDocument.Segments.RemoveRange(ediDocument2.Segments.Count - elementsToDelete, elementsToDelete);
+                            bool start_processing_ST_address = false; // Flag to start processing when HL*1**S~ is encountered
 
+                            for (int l = 0; l < ediDocument.Segments.Count; l++)
+                            {
+                                if (ediDocument.Segments[l].Name == "HL")
+                                {
+                                    // Check for HL segment with specific values (HL*1**S~ or HL*2*1*O~)
+                                    if (ediDocument.Segments[l].Values.Count >= 3)
+                                    {
+                                        if (ediDocument.Segments[l].Values[3] == "S")
+                                        {
+                                            start_processing_ST_address = true;
+                                            if (start_processing_ST_address)
+                                            {
+                                                for (int u = 0; u < ediDocument.Segments.Count; u++)
+                                                {
+                                                    if (ediDocument.Segments[u].Name == "N1")
+                                                    {
+                                                        N101 = ediDocument.Segments[u].Values.Count > 1 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(1))
+                                                            ? ediDocument.Segments[u].Values[1]
+                                                            : N101;
 
+                                                        N102 = ediDocument.Segments[u].Values.Count > 2 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(2))
+                                                            ? ediDocument.Segments[u].Values[2]
+                                                            : N102;
 
-                            //Handling Shiploc
-                            string LOCTYPE, NAME, ID, ADDRLINE1, CITY, PROVSTATE, POSTALCODE, COUNTRY;
-                            LOCTYPE = NAME = ID = ADDRLINE1 = CITY = PROVSTATE = POSTALCODE = COUNTRY = "";
+                                                        N103 = ediDocument.Segments[u].Values.Count > 3 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(3))
+                                                            ? ediDocument.Segments[u].Values[3]
+                                                            : N103;
+
+                                                        N104 = ediDocument.Segments[u].Values.Count > 4 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(4))
+                                                            ? ediDocument.Segments[u].Values[4]
+                                                            : N104;
+
+                                                        break;
+                                                    }
+                                                }
+                                                for (int u = 0; u < ediDocument.Segments.Count; u++)
+                                                {
+                                                    if (ediDocument.Segments[u].Name == "N3")
+                                                    {
+                                                        N301 = !string.IsNullOrEmpty(ediDocument.Segments[u].Values[1]) ? ediDocument.Segments[u].Values[1] : N301;
+                                                        break;
+                                                    }
+                                                }
+                                                for (int u = 0; u < ediDocument.Segments.Count; u++)
+                                                {
+                                                    if (ediDocument.Segments[u].Name == "N4")
+                                                    {
+                                                        N401 = ediDocument.Segments[u].Values.Count > 1 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(1))
+                                                            ? ediDocument.Segments[u].Values[1]
+                                                            : N401;
+
+                                                        N402 = ediDocument.Segments[u].Values.Count > 2 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(2))
+                                                            ? ediDocument.Segments[u].Values[2]
+                                                            : N402;
+
+                                                        N403 = ediDocument.Segments[u].Values.Count > 3 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(3))
+                                                            ? ediDocument.Segments[u].Values[3]
+                                                            : N403;
+
+                                                        N404 = ediDocument.Segments[u].Values.Count > 4 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(4))
+                                                            ? ediDocument.Segments[u].Values[4]
+                                                            : N404;
+
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        else if (ediDocument.Segments[l].Values[3] == "O")
+                                        {
+                                            break; // Exit the loop when HL*2*1*O~ is encountered
+                                        }
+                                    }
+                                }
+                            }
+                            string LOCTYPE, NAME, ID, ADDRLINE1, ADDRLINE2, CITY, PROVSTATE, POSTALCODE, COUNTRY = "";
                             LOCTYPE = "ST";
-
-                            try { NAME = GetSegmentValue(AbbreviateEDIDocument, "N1", 2); } catch (Exception) { NAME = ""; }
-                            try { ID = GetSegmentValue(AbbreviateEDIDocument, "N1", 4); } catch (Exception) { ID = ""; }
-                            ADDRLINE1 = "";
-                            try { CITY = GetSegmentValue(AbbreviateEDIDocument, "N4", 1); } catch (Exception) { CITY = ""; }
-                            try { PROVSTATE = GetSegmentValue(AbbreviateEDIDocument, "N4", 2); } catch (Exception) { PROVSTATE = ""; }
-                            try { POSTALCODE = GetSegmentValue(AbbreviateEDIDocument, "N4", 3); } catch (Exception) { POSTALCODE = ""; }
-                            try { COUNTRY = GetSegmentValue(AbbreviateEDIDocument, "N4", 4); } catch (Exception) { COUNTRY = ""; }
+                            NAME = N102;
+                            ID = N104;
+                            ADDRLINE1 = N301;
+                            ADDRLINE2 = N302;
+                            CITY = N401;
+                            PROVSTATE = N402;
+                            POSTALCODE = N403;
+                            COUNTRY = N404;
 
                             DataSolutions.DataModels.Xml.ShipNotice.SHIPLOC Shiplevel_Shiploc_Type_ST = new DataSolutions.DataModels.Xml.ShipNotice.SHIPLOC
                             {
                                 LOCTYPE = "ST",
                                 NAME = NAME,
                                 ID = ID,
-                                ADDRLINE1 = "",
+                                ADDRLINE1 = ADDRLINE1,
+                                ADDRLINE2 = ADDRLINE2,
                                 CITY = CITY,
                                 PROVSTATE = PROVSTATE,
                                 POSTALCODE = POSTALCODE,
                                 COUNTRY = COUNTRY,
                             };
+
+                            #endregion
+
                             shipLevel.SHIPLOC = new List<DataSolutions.DataModels.Xml.ShipNotice.SHIPLOC> { Shiplevel_Shiploc_Type_ST }.ToArray();
                             asnDetails.Add(shipLevel);
                             //looping until next HL level
@@ -1041,24 +1177,98 @@ namespace CartersOSVVendorInboundEDI856MappingProcess
                             orderLevel.EXTRA = new List<DataSolutions.DataModels.Xml.ShipNotice.EXTRA> { netWeightUOM_Extra }.ToArray();
 
 
-                            //Mapping Party and add to Orderlevel
-                            string NAME, ID, CITY, PROVSTATE, POSTALCODE, COUNTRY;
-                            NAME = ID = CITY = PROVSTATE = POSTALCODE = COUNTRY = string.Empty;
-
-                            try { NAME = ediDocument.Segments[i + 2].Values[2]; } catch (Exception) { NAME = ""; }
-                            try { ID = ediDocument.Segments[i + 2].Values[4]; } catch (Exception) { ID = ""; }
-                            if (ediDocument.Segments[i + 3].Name == "N4")
+                            #region handling BY loctype
+                            string N102 = "";
+                            string N104 = "";
+                            string N301 = "";
+                            string N302 = "";
+                            string N401 = "";
+                            string N402 = "";
+                            string N403 = "";
+                            string N404 = "";
+                            bool start_processing_BY_address = false; // Flag to start processing when HL*1**S~ is encountered
+                            for (int l = 0; l < ediDocument.Segments.Count; l++)
                             {
-                                try { CITY = ediDocument.Segments[i + 3].Values[1]; } catch (Exception) { CITY = ""; }
-                                try { PROVSTATE = ediDocument.Segments[i + 3].Values[2]; } catch (Exception) { PROVSTATE = ""; }
-                                try { POSTALCODE = ediDocument.Segments[i + 3].Values[3]; } catch (Exception) { POSTALCODE = ""; }
-                                try { COUNTRY = ediDocument.Segments[i + 3].Values[4]; } catch (Exception) { COUNTRY = ""; }
-                            }
-                            else
-                            {
-                                CITY = PROVSTATE = POSTALCODE = COUNTRY = string.Empty;
+                                if (ediDocument.Segments[l].Name == "HL")
+                                {
+                                    // Check for HL segment with specific values (HL*1**S~ or HL*2*1*O~)
+                                    if (ediDocument.Segments[l].Values.Count >= 3)
+                                    {
+                                        if (ediDocument.Segments[l].Values[3] == "O")
+                                        {
+                                            start_processing_BY_address = true;
+                                            if (start_processing_BY_address)
+                                            {
+                                                for (int u = l; u < ediDocument.Segments.Count; u++)
+                                                {
+                                                    if (ediDocument.Segments[u].Name == "N1")
+                                                    {
+
+                                                        N102 = ediDocument.Segments[u].Values.Count > 2 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(2))
+                                                            ? ediDocument.Segments[u].Values[2]
+                                                            : N102;
+
+                                                        N104 = ediDocument.Segments[u].Values.Count > 4 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(4))
+                                                            ? ediDocument.Segments[u].Values[4]
+                                                            : N104;
+
+                                                        break;
+                                                    }
+                                                }
+                                                for (int u = l; u < ediDocument.Segments.Count; u++)
+                                                {
+                                                    if (ediDocument.Segments[u].Name == "N3")
+                                                    {
+                                                        N301 = !string.IsNullOrEmpty(ediDocument.Segments[u].Values[1]) ? ediDocument.Segments[u].Values[1] : N301;
+                                                        break;
+                                                    }
+                                                }
+                                                for (int u = l; u < ediDocument.Segments.Count; u++)
+                                                {
+                                                    if (ediDocument.Segments[u].Name == "N4")
+                                                    {
+                                                        N401 = ediDocument.Segments[u].Values.Count > 1 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(1))
+                                                            ? ediDocument.Segments[u].Values[1]
+                                                            : N401;
+
+                                                        N402 = ediDocument.Segments[u].Values.Count > 2 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(2))
+                                                            ? ediDocument.Segments[u].Values[2]
+                                                            : N402;
+
+                                                        N403 = ediDocument.Segments[u].Values.Count > 3 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(3))
+                                                            ? ediDocument.Segments[u].Values[3]
+                                                            : N403;
+
+                                                        N404 = ediDocument.Segments[u].Values.Count > 4 && !string.IsNullOrEmpty(ediDocument.Segments[u].Values.ElementAtOrDefault(4))
+                                                            ? ediDocument.Segments[u].Values[4]
+                                                            : N404;
+
+                                                        break;
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                        }
+                                        else if (ediDocument.Segments[l].Values[3] == "P")
+                                        {
+                                            break; 
+                                        }
+                                    }
+                                }
                             }
 
+                            string LOCTYPE, NAME, ID, ADDRLINE1, ADDRLINE2, CITY, PROVSTATE, POSTALCODE, COUNTRY = "";
+                            LOCTYPE = "ST";
+                            NAME = N102;
+                            ID = N104;
+                            ADDRLINE1 = N301;
+                            ADDRLINE2 = N302;
+                            CITY = N401;
+                            PROVSTATE = N402;
+                            POSTALCODE = N403;
+                            COUNTRY = N404;
+
+                            #endregion
 
                             DataSolutions.DataModels.Xml.ShipNotice.PARTY Party_O_Level_98BY = new DataSolutions.DataModels.Xml.ShipNotice.PARTY
                             {
@@ -1067,7 +1277,7 @@ namespace CartersOSVVendorInboundEDI856MappingProcess
                                 LABEL = "Buyer Agent",
                                 NAME = NAME,
                                 ID = ID,
-                                ADDRLINE1 = "",
+                                ADDRLINE1 = ADDRLINE1,
                                 CITY = CITY,
                                 PROVSTATE = PROVSTATE,
                                 POSTALCODE = POSTALCODE,
